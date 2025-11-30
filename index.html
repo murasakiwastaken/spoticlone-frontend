@@ -561,89 +561,92 @@
 
     <script>
         // ==================== CONFIGURATION ====================
-        const BACKEND_URL = 'https://spoticlone-backend-production.up.railway.app';
-        const CLIENT_ID = '4ef0b2e57bff49f88229c6f4a877dc21';
+      /* ---------- CONFIG ---------- */
+const BACKEND_URL = 'https://spoticlone-backend-production.up.railway.app';
+const CLIENT_ID  = '4ef0b2e57bff49f88229c6f4a877dc21';
 const REDIRECT_URI = 'https://murasakiwastaken.github.io/spoticlone-frontend/';
-        const SCOPES = 'user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state';
+const SCOPES = 'user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state';
 
-        // ==================== STATE ====================
-        const AppState = {
-            accessToken: localStorage.getItem('spotify_access_token'),
-            refreshToken: localStorage.getItem('spotify_refresh_token'),
-            tokenExpiresAt: localStorage.getItem('spotify_token_expires'),
-            currentSong: null,
-            isPlaying: false,
-            audio: new Audio(),
-            progressInterval: null,
-            recentlyPlayed: JSON.parse(localStorage.getItem('recentlyPlayed')) || []
-        };
+/* ---------- STATE ---------- */
+const AppState = {
+  accessToken:  localStorage.getItem('spotify_access_token'),
+  refreshToken: localStorage.getItem('spotify_refresh_token'),
+  expiresAt:    localStorage.getItem('spotify_token_expires'),
+  currentSong:  null,
+  isPlaying:    false,
+  audio:        new Audio(),
+  progressInterval: null,
+  recentlyPlayed: JSON.parse(localStorage.getItem('recentlyPlayed')) || []
+};
 
-        // ==================== AUTHENTICATION ====================
-        document.addEventListener('DOMContentLoaded', async () => {
-            if (window.location.pathname.includes('callback')) {
-                await handleCallback();
-            } else if (!AppState.accessToken || isTokenExpired()) {
-                showLogin();
-            } else {
-                showApp();
-                initApp();
-            }
-        });
+/* ---------- AUTH HANDLING ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+  const urlCode = new URLSearchParams(location.search).get('code');
 
-        function isTokenExpired() {
-            return !AppState.tokenExpiresAt || Date.now() > parseInt(AppState.tokenExpiresAt);
-        }
+  if (urlCode) {                                    // we came back from Spotify
+    history.replaceState({}, document.title, '/');  // tidy URL
+    exchangeCode(urlCode);
+  } else if (tokenOK()) {                           // already logged in
+    showApp();
+    initApp();
+  } else {                                          // show login
+    showLogin();
+  }
+});
 
-        function showLogin() {
-            document.getElementById('loginView').style.display = 'flex';
-            document.getElementById('mainApp').classList.add('hidden');
-            document.getElementById('loginBtn').onclick = login;
-        }
+function tokenOK() {
+  return AppState.accessToken && Date.now() < Number(AppState.expiresAt);
+}
+function showLogin() {
+  document.body.innerHTML = `
+    <div class="login-container">
+      <div class="login-box">
+        <h1>🎵 SpotiClone</h1>
+        <p>Connect your Spotify account</p>
+        <button class="login-btn" onclick="login()">LOG IN WITH SPOTIFY</button>
+      </div>
+    </div>`;
+}
+function showApp() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('mainApp').classList.remove('hidden');
+}
+function login() {
+  location = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}`;
+}
+async function exchangeCode(code) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    localStorage.setItem('spotify_access_token',  `Bearer ${data.access_token}`);
+    localStorage.setItem('spotify_refresh_token', data.refresh_token);
+    localStorage.setItem('spotify_token_expires', Date.now() + (data.expires_in * 1000));
+    showApp();
+    initApp();
+  } catch (e) {
+    console.error(e);
+    alert('Login failed – check console');
+  }
+}
 
-        function showApp() {
-            document.getElementById('loginView').style.display = 'none';
-            document.getElementById('mainApp').classList.remove('hidden');
-        }
-
-        function login() {
-            const authUrl = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}`;
-            window.location.href = authUrl;
-        }
-
-        async function handleCallback() {
-            const code = new URLSearchParams(window.location.search).get('code');
-            if (!code) return;
-            
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/token`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code })
-                });
-                
-                const data = await res.json();
-                localStorage.setItem('spotify_access_token', `Bearer ${data.access_token}`);
-                localStorage.setItem('spotify_refresh_token', data.refresh_token);
-                localStorage.setItem('spotify_token_expires', Date.now() + (data.expires_in * 1000));
-                
-                window.history.replaceState({}, document.title, '/');
-                location.reload();
-            } catch (err) {
-                alert('Login failed. Check console.');
-                console.error(err);
-            }
-        }
-
-        // ==================== APP INITIALIZATION ====================
-        function initApp() {
-            loadGrids();
-            setupNavigation();
-            setupSearch();
-            setupPlayerControls();
-            setupProgressBar();
-            loadRecentlyPlayed();
-        }
-
+/* ---------- NORMAL APP LOGIC ---------- */
+function initApp() {
+  loadGrids();
+  setupNavigation();
+  setupSearch();
+  setupPlayer();
+  loadRecentlyPlayed();
+}
+/*  mock data  */
+const mockSongs = [
+  {id:1, title:"Midnight Dreams", artist:"Luna Echo", albumArt:"https://picsum.photos/seed/music1/200/200.jpg", previewUrl:"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
+  {id:2, title:"Electric Pulse", artist:"Neon Lights", albumArt:"https://picsum.photos/seed/music2/200/200.jpg", previewUrl:"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
+  {id:3, title:"Summer Breeze", artist:"Tropical Vibes", albumArt:"https://picsum.photos/seed/music3/200/200.jpg", previewUrl:"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"}
+];
         // ==================== VIEW NAVIGATION ====================
         function setupNavigation() {
             const navItems = document.querySelectorAll('.nav-item');
